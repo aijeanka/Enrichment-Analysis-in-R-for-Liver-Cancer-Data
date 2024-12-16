@@ -1,0 +1,110 @@
+---
+title: 'Homework 7: Enrichment Analysis in R'
+author: "Aizhan Uteubayeva (netID:au198)"
+date: "2023-10-11"
+output:
+  pdf_document: default
+  html_document: default
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(enrichR)
+library(openxlsx)
+```
+
+## R Markdown - Enrichment analysis using EnrichR R package
+
+Summary - Input gene lists created from T-Test / EdgeR group comparison analysis . Or an short list of genes of interest from your collaborator (Researcher/Clinician/) - If needed, short list genes based on p-value or FDR value. - Run EnrichR on short listed gene list
+
+## Import T-test results for further shortlisting
+
+```{r}
+#folder that contains group comparison results
+fileName <- "input/TTest_HW_EGradeIII-IV_(Comp).vs._EGradeI-II_(Base).TTest.csv"
+
+# read in group comparison results
+result1 <- read.csv(file = fileName, 
+                        header = T, stringsAsFactors = F, row.names = 1)
+```
+
+## Filtering/shortlisting
+
+Short list results based in p-value cut off (p-value \<= 0.01), and fold change cut off (greater than 1.5 or less than -1.5) -à refer to R code done in class
+
+```{r}
+pValueCutOff <- 0.01
+which1 <- ((as.numeric(result1$Pvalue) <= pValueCutOff) & (as.numeric(result1$SignedFC) >= 1.5 | as.numeric(result1$SignedFC) <= -1.5))
+table(which1) #82 genes TRUE
+
+resultShort <- result1[which1, ] #short listed genes 
+```
+
+## Export the short listed results for reference
+
+```{r}
+# length of short listed results
+nrow(resultShort)
+
+write.csv(x = resultShort, file = "output/HCC_TTest_results_shortlist2.csv")
+```
+
+## Clean gene names
+
+Genes are in the name contain "\|"
+
+```{r}
+funcSplit <- function(rep_gene) {
+    rep_gene_split <- unlist(strsplit(x = rep_gene, 
+                                      split = "|", 
+                                      fixed = TRUE))
+    gene <- rep_gene_split[2]
+    return(gene)
+}
+geneListSplit <- apply(X = as.matrix(row.names(resultShort)), 
+                       MARGIN = 1, FUN = funcSplit )
+head(geneListSplit) #cleaned gene names
+
+#remove duplicates
+geneListSplit1 <- unique(geneListSplit)
+
+# remove NA value
+geneListFinal <- na.omit(geneListSplit1)
+
+#print number of unique genes
+length(geneListFinal)
+write.table(x = geneListFinal, 
+          file = "output/shortListedUniqueGenes.tsv",
+          quote = F, sep = "\t", row.names = FALSE, col.names = F)
+
+
+```
+
+## Loading Databases for EnrichrR package
+
+```{r}
+#checking if EnrichR website and packing are working
+#dbs <- enrichR::listEnrichrDbs()  #total number of databases available = 200+ 
+
+#testing if EnrichR package is working
+testOutput <- enrichR::enrichr(genes = c("Runx1", "Gfi1", "Gfi1b", "Spi1", "Gata1", "Kdr"), databases = "KEGG_2021_Human")
+head(testOutput[[1]])
+
+#List of databases for which enrichment analysis will be run
+dblist1 <- read.csv(file = "input/2023-EnrichR-Databases.txt", 
+                    header = F, stringsAsFactors = F)
+
+head(dblist1)
+```
+
+## Calling function to run Enrichment
+
+```{r}
+# set output file name
+outputFileName1 <- paste("output/Aizhan_Uteubayeva", "_EnrichR_HW.xlsx", sep="")
+
+#Load R script into the environment
+source(file = "input/functionEnrichment.R") 
+
+#call function to run Enrichment
+functionEnrichment(dblist1, geneListFinal, outputFileName1)
+```

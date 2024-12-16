@@ -1,0 +1,178 @@
+---
+title: "04-Enrichment"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+#install.packages("enrichR")
+#install.packages("openxlsx")# independant of java
+#install.packages("devtools") 
+#devtools::install_github("wjawaid/enrichR")
+library(enrichR)
+library(openxlsx)
+
+# NOTE - if you have an error "EnrichR website not responding"  and unable to connect to EnrichR database online, try this
+# OPTION 1
+#devtools::install_github("wjawaid/enrichR")
+#library(enrichR)
+
+# OPTION 2 - update curl and wget
+# (Step a) Open the "terminal" application for these commands. Follow instructions for mac
+# https://help.ubidots.com/en/articles/2165289-learn-how-to-install-run-curl-on-windows-macosx-linux
+# 
+# (Step b) Install/update wget to the latest version
+# Use the same "terminal" application. Enter
+# brew install wget
+# 
+# (step C) Restart your computer. 
+# Try out these EnrichR commands to see if you are able to access the enrichR databases online without error message
+# install.packages("enrichR")
+# library(enrichR)
+# enrichR::listEnrichrDbs()
+
+```
+
+## R Markdown - Enrichment anlalysis using EnrichR R package
+
+Summary
+- Input gene lists created from T-Test / EdgeR group comparison analysis . Or an short list of genes of interest from your collaborator (Researcher/Clinician/)
+- If needed, short list genes based on p-value or FDR value.
+- Run EnrichR on short listed gene list
+
+## Import T-test results so that we can short list further
+```{r}
+#folder that contains group comparison results
+fileName <- "input/CRCPilot_Ttest_Shortlisted.csv"
+
+# read in group comparison results
+result1 <- read.csv(file = fileName, 
+                        header = T, stringsAsFactors = F, row.names = 1)
+```
+
+#Filtering/shortlisting example - 1
+Short list results based in p-value cut off (pvalue <= 0.05)
+```{r}
+#pValueCutOff <- 0.05
+#which1 <- ((as.numeric(result1$Pvalue) <= pValueCutOff))
+#table(which1) #146 genes with p <= 0.01. 719 genes with p-value <= 0.05
+
+#resultShort <- result1[which1, ] #short listed genes 
+
+```
+
+#Filtering/shortlisting example - 2
+Short list results based in p-value cut off (pvalue <= 0.01)
+```{r}
+pValueCutOff <- 0.01
+which1 <- ((as.numeric(result1$Pvalue) <= pValueCutOff))
+table(which1) #146 genes with p <= 0.01. 
+
+resultShort <- result1[which1, ] #short listed genes 
+```
+
+#Filtering/shortlisting example - 3
+Short list results based in p-value cut off (p-value <= 0.01), and fold change cut off (greater than 1.5 or less than -1.5), 
+```{r , eval=FALSE}
+#pValueCutOff <- 0.01
+#which1 <- ((as.numeric(result1$Pvalue) <= pValueCutOff) & (as.numeric(result1$SignedFC) >= 1.5 | as.numeric(result1$SignedFC) <= -1.5))
+#table(which1) #26 genes TRUE
+
+#resultShort <- result1[which1, ] #short listed genes 
+```
+
+#Filtering/shortlisting example - 4
+Sort by FDR . 
+Take top 500 genes
+```{r}
+#resultOrder <- result1[order(result1$FDR),] 
+#resultShort <- resultOrder[1:500, ]
+```
+
+#Filtering/shortlisting example - 5
+Short list results based in adjusted p-value cut off (also called q-value or fdr) <= 0.05
+```{r}
+#qValueCutOff <- 0.05
+#which1 <- ((as.numeric(result1$FDR) <= qValueCutOff))
+#table(which1) #
+#resultShort <- result1[which1, ] #short listed genes
+```
+
+
+## Export the short listed results for reference
+Make sure folder "output" exists
+```{r}
+#length of short listed results
+nrow(resultShort)
+
+write.csv(x = resultShort, file = "output/TTest_results_shortlist2.csv")
+```
+
+## Clean gene names
+Note - the gene names are in the form of "reporterid_genename". So need to split this.
+```{r}
+funcSplit <- function(rep_gene) {
+    rep_gene_split <- unlist(strsplit(x = rep_gene, 
+                                      split = "_", 
+                                      fixed = TRUE))
+    gene <- rep_gene_split[2]
+    return(gene)
+}
+geneListSplit <- apply(X = as.matrix(row.names(resultShort)), 
+                       MARGIN = 1, FUN = funcSplit )
+head(geneListSplit) #cleaned gene names
+
+#remove duplicates
+geneListSplit1 <- unique(geneListSplit)
+
+# remove NA value
+geneListFinal <- na.omit(geneListSplit1) #701 genes
+
+#print number of unique genes
+length(geneListFinal)
+write.table(x = geneListFinal, 
+          file = "output/shortListedUniqueGenes.tsv",
+          quote = F, sep = "\t", row.names = FALSE, col.names = F)
+
+
+```
+
+## Load Databases for Enrichr R package , and check connection
+```{r}
+#checking if EnrichR website and packing are working
+#dbs <- enrichR::listEnrichrDbs()  #total number of databases available = 200+ 
+
+#testing if EnrichR package is working
+testOutput <- enrichR::enrichr(genes = c("Runx1", "Gfi1", "Gfi1b", "Spi1", "Gata1", "Kdr"), databases = "KEGG_2021_Human")
+head(testOutput[[1]])
+
+#List of databases for which enrichment analysis will be run
+dblist1 <- read.csv(file = "input/2023-EnrichR-Databases.txt", 
+                    header = F, stringsAsFactors = F)
+
+head(dblist1)
+```
+
+## call function to run Enrichment
+
+```{r}
+# set output file name
+outputFileName1 <- paste("output/ColonCancer", "_EnrichR.xlsx", sep="")
+
+#Load R script into the environment
+source(file = "functionEnrichment.R") 
+
+#call function to run Enrichment
+functionEnrichment(dblist1, geneListFinal, outputFileName1)
+
+#NEED INTERNET CONNECTION
+```
+
+Note - you will need internet connection to complete the above step. 
+
+### RESULT
+When you run the funtion, will create an Excel file with multiple tabs. Each tab shows the enrichment results for a database. A total of 14-15 databases, so 14-15 tabs in the excel sheet
+
+After you finish coding, click on "Knit" to create an HTML or PDF file with text and code
